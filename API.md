@@ -1,0 +1,1174 @@
+# NoCode PyTorch Platform - API 文档
+
+## 📋 目录
+
+- [基础信息](#基础信息)
+- [认证](#认证)
+- [Model IR API](#model-ir-api)
+- [Data IR API](#data-ir-api)
+- [Experiment API](#experiment-api)
+- [Shape Inference API](#shape-inference-api)
+- [Stream API](#stream-api)
+- [错误码](#错误码)
+- [示例代码](#示例代码)
+
+---
+
+## 基础信息
+
+### Base URL
+
+```
+开发环境: http://localhost:8000
+生产环境: https://api.nocode-pytorch.com
+```
+
+### API 版本
+
+```
+当前版本: v1
+路径前缀: /api/v1
+```
+
+### 响应格式
+
+所有 API 响应遵循统一格式：
+
+```typescript
+interface ApiResponse<T> {
+  success: boolean;      // 请求是否成功
+  data?: T;             // 响应数据
+  message?: string;       // 提示信息
+  error?: string;        // 错误信息
+}
+```
+
+### 状态码
+
+| 状态码 | 说明 |
+|--------|------|
+| 200 | 请求成功 |
+| 201 | 创建成功 |
+| 400 | 请求参数错误 |
+| 404 | 资源不存在 |
+| 500 | 服务器内部错误 |
+
+---
+
+## 认证
+
+### 当前状态
+
+MVP 阶段暂未实现认证，所有 API 均可匿名访问。
+
+### 未来计划
+
+- JWT Token 认证
+- 用户角色管理
+- API 密钥认证
+
+---
+
+## Model IR API
+
+### 1. 创建 Model IR
+
+**端点**：`POST /api/v1/model-irs`
+
+**描述**：创建一个新的 Model IR
+
+**请求体**：
+
+```typescript
+interface CreateModelIRRequest {
+  id: string;                    // 模型唯一 ID
+  name: string;                  // 模型名称
+  version?: string;               // 版本号，默认 "1.0.0"
+  nodes: IRNode[];              // 节点列表
+  edges: IREdge[];              // 边列表
+  description?: string;           // 描述
+  tags?: string[];               // 标签
+}
+
+interface IRNode {
+  id: string;                  // 节点唯一 ID
+  op_type: OpType;              // 算子类型
+  name: string;                // 节点名称
+  params: Record<string, any>;  // 算子参数
+  position?: {                 // 前端画布坐标
+    x: number;
+    y: number;
+  };
+  output_shape?: number[];      // 输出形状（自动推导）
+}
+
+interface IREdge {
+  id: string;                  // 边唯一 ID
+  source: string;              // 源节点 ID
+  target: string;              // 目标节点 ID
+  source_handle?: string;       // 源节点连接点
+  target_handle?: string;       // 目标节点连接点
+}
+```
+
+**响应**：
+
+```typescript
+interface CreateModelIRResponse {
+  success: true;
+  data: ModelIRSummary;
+  message: "Model IR 保存成功";
+}
+
+interface ModelIRSummary {
+  id: string;
+  name: string;
+  version: string;
+  node_count: number;
+  edge_count: number;
+}
+```
+
+**示例**：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/model-irs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "model-001",
+    "name": "Simple Cnn",
+    "version": "1.0.0",
+    "nodes": [
+      {
+        "id": "n0",
+        "op_type": "Input",
+        "name": "input",
+        "params": {"shape": [3, 32, 32]}
+      },
+      {
+        "id": "n1",
+        "op_type": "Conv2d",
+        "name": "conv1",
+        "params": {
+          "in_channels": 3,
+          "out_channels": 16,
+          "kernel_size": 3,
+          "padding": 1
+        }
+      },
+      {
+        "id": "n2",
+        "op_type": "ReLU",
+        "name": "relu1",
+        "params": {}
+      },
+      {
+        "id": "n3",
+        "op_type": "Output",
+        "name": "output",
+        "params": {}
+      }
+    ],
+    "edges": [
+      {"id": "e01", "source": "n0", "target": "n1"},
+      {"id": "e12", "source": "n1", "target": "n2"},
+      {"id": "e23", "source": "n2", "target": "n3"}
+    ]
+  }'
+```
+
+### 2. 获取 Model IR 列表
+
+**端点**：`GET /api/v1/model-irs`
+
+**描述**：获取所有 Model IR 的摘要列表
+
+**响应**：
+
+```typescript
+interface ListModelIRsResponse {
+  success: true;
+  data: ModelIRSummary[];
+}
+```
+
+**示例**：
+
+```bash
+curl http://localhost:8000/api/v1/model-irs
+```
+
+### 3. 获取单个 Model IR
+
+**端点**：`GET /api/v1/model-irs/{id}`
+
+**描述**：获取指定 ID 的 Model IR 详细信息
+
+**路径参数**：
+- `id` (string): Model IR 的 ID
+
+**响应**：
+
+```typescript
+interface GetModelIRResponse {
+  success: true;
+  data: ModelIR;
+}
+```
+
+**示例**：
+
+```bash
+curl http://localhost:8000/api/v1/model-irs/model-001
+```
+
+### 4. 更新 Model IR
+
+**端点**：`PUT /api/v1/model-irs/{id}`
+
+**描述**：更新指定 ID 的 Model IR（全量替换）
+
+**路径参数**：
+- `id` (string): Model IR 的 ID
+
+**请求体**：同创建 Model IR
+
+**响应**：
+
+```typescript
+interface UpdateModelIRResponse {
+  success: true;
+  data: ModelIRSummary;
+  message: "Model IR 更新成功";
+}
+```
+
+**示例**：
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/model-irs/model-001 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "model-001",
+    "name": "Updated Model",
+    "nodes": [...],
+    "edges": [...]
+  }'
+```
+
+### 5. 删除 Model IR
+
+**端点**：`DELETE /api/v1/model-irs/{id}`
+
+**描述**：删除指定 ID 的 Model IR
+
+**路径参数**：
+- `id` (string): Model IR 的 ID
+
+**响应**：
+
+```typescript
+interface DeleteModelIRResponse {
+  success: true;
+  message: "删除成功";
+}
+```
+
+**示例**：
+
+```bash
+curl -X DELETE http://localhost:8000/api/v1/model-irs/model-001
+```
+
+### 6. 生成 PyTorch 代码
+
+**端点**：`GET /api/v1/model-irs/{id}/codegen`
+
+**描述**：从 Model IR 生成 PyTorch 代码
+
+**路径参数**：
+- `id` (string): Model IR 的 ID
+
+**响应**：`text/plain` 格式的 PyTorch 代码
+
+**示例**：
+
+```bash
+curl http://localhost:8000/api/v1/model-irs/model-001/codegen
+```
+
+**响应示例**：
+
+```python
+"""
+Auto-generated by NoCode PyTorch Platform
+Model: Simple Cnn  Version: 1.0.0
+"""
+
+import torch
+import torch.nn as nn
+
+class SimpleCnn(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, padding=1)
+        self.relu1 = nn.ReLU(inplace=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv1(x)
+        x = self.relu1(x)
+        return x
+```
+
+---
+
+## Data IR API
+
+### 1. 创建 Data IR
+
+**端点**：`POST /api/v1/data-irs`
+
+**描述**：创建一个新的 Data IR
+
+**请求体**：
+
+```typescript
+interface CreateDataIRRequest {
+  id: string;                          // 数据唯一 ID
+  name: string;                        // 数据名称
+  source: DataSourceUnion;              // 数据源
+  schema: DataSchema;                  // 数据 Schema
+  split: SplitConfigUnion;             // 切分策略
+  train_pipeline: TransformPipeline;     // 训练 Pipeline
+  val_pipeline: TransformPipeline;       // 验证 Pipeline
+  test_pipeline?: TransformPipeline;    // 测试 Pipeline
+  train_loader_config: DataLoaderConfig; // 训练 DataLoader 配置
+  val_loader_config: DataLoaderConfig;   // 验证 DataLoader 配置
+  test_loader_config?: DataLoaderConfig; // 测试 DataLoader 配置
+}
+
+interface DataSourceUnion {
+  type: "torchvision" | "local_folder" | "local_csv";
+  // torchvision 数据源
+  dataset_name?: string;
+  download_root?: string;
+  download?: boolean;
+  // 本地文件夹数据源
+  root_path?: string;
+  // CSV 数据源
+  csv_path?: string;
+  image_root?: string;
+}
+
+interface DataSchema {
+  task_type: "image_classification" | "object_detection" | "segmentation";
+  num_classes?: number;
+  class_names?: string[];
+  input_channels?: number;
+}
+
+interface SplitConfigUnion {
+  strategy: "ratio" | "predefined";
+  // ratio 切分
+  train_ratio?: number;
+  val_ratio?: number;
+  test_ratio?: number;
+  random_seed?: number;
+  // predefined 切分
+  train_dir?: string;
+  val_dir?: string;
+  test_dir?: string;
+}
+
+interface TransformPipeline {
+  transforms: TransformNode[];
+  enabled?: boolean;
+}
+
+interface TransformNode {
+  id: string;
+  op_type: TransformOpType;
+  params: Record<string, any>;
+}
+
+interface DataLoaderConfig {
+  batch_size: number;
+  num_workers?: number;
+  pin_memory?: boolean;
+  drop_last?: boolean;
+  shuffle?: boolean;
+}
+```
+
+**响应**：
+
+```typescript
+interface CreateDataIRResponse {
+  success: true;
+  data: DataIRSummary;
+  message: "Data IR 保存成功";
+}
+
+interface DataIRSummary {
+  id: string;
+  name: string;
+  task_type: TaskType;
+  num_classes?: number;
+}
+```
+
+**示例**：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/data-irs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "data-001",
+    "name": "CIFAR10 Data",
+    "source": {
+      "type": "torchvision",
+      "dataset_name": "CIFAR10",
+      "download_root": "./data",
+      "download": true
+    },
+    "schema": {
+      "task_type": "image_classification",
+      "num_classes": 10,
+      "class_names": [
+        "airplane", "automobile", "bird", "cat", "deer",
+        "dog", "frog", "horse", "ship", "truck"
+      ],
+      "input_channels": 3
+    },
+    "split": {
+      "strategy": "ratio",
+      "train_ratio": 0.8,
+      "val_ratio": 0.1,
+      "test_ratio": 0.1,
+      "random_seed": 42
+    },
+    "train_pipeline": {
+      "transforms": [
+        {"id": "t1", "op_type": "RandomHorizontalFlip", "params": {"p": 0.5}},
+        {"id": "t2", "op_type": "RandomCrop", "params": {"size": 32, "padding": 4}},
+        {"id": "t3", "op_type": "ToTensor", "params": {}},
+        {"id": "t4", "op_type": "Normalize", "params": {
+          "mean": [0.4914, 0.4822, 0.4465],
+          "std": [0.2470, 0.2435, 0.2616]
+        }}
+      ]
+    },
+    "val_pipeline": {
+      "transforms": [
+        {"id": "v1", "op_type": "ToTensor", "params": {}},
+        {"id": "v2", "op_type": "Normalize", "params": {
+          "mean": [0.4914, 0.4822, 0.4465],
+          "std": [0.2470, 0.2435, 0.2616]
+        }}
+      ]
+    },
+    "train_loader_config": {
+      "batch_size": 64,
+      "num_workers": 2,
+      "shuffle": true
+    },
+    "val_loader_config": {
+      "batch_size": 128,
+      "num_workers": 2,
+      "shuffle": false
+    }
+  }'
+```
+
+### 2. 获取 Data IR 列表
+
+**端点**：`GET /api/v1/data-irs`
+
+**描述**：获取所有 Data IR 的摘要列表
+
+**响应**：
+
+```typescript
+interface ListDataIRsResponse {
+  success: true;
+  data: DataIRSummary[];
+}
+```
+
+**示例**：
+
+```bash
+curl http://localhost:8000/api/v1/data-irs
+```
+
+### 3. 获取单个 Data IR
+
+**端点**：`GET /api/v1/data-irs/{id}`
+
+**描述**：获取指定 ID 的 Data IR 详细信息
+
+**路径参数**：
+- `id` (string): Data IR 的 ID
+
+**响应**：
+
+```typescript
+interface GetDataIRResponse {
+  success: true;
+  data: DataIR;
+}
+```
+
+**示例**：
+
+```bash
+curl http://localhost:8000/api/v1/data-irs/data-001
+```
+
+---
+
+## Experiment API
+
+### 1. 创建 Experiment IR
+
+**端点**：`POST /api/v1/experiments`
+
+**描述**：创建一个新的 Experiment IR
+
+**请求体**：
+
+```typescript
+interface CreateExperimentRequest {
+  id: string;                    // 实验唯一 ID
+  name: string;                  // 实验名称
+  model_ir_id: string;           // Model IR ID
+  data_ir_id: string;            // Data IR ID
+  hyper_params: HyperParams;      // 超参数
+  backend: RuntimeBackend;         // 运行后端
+  checkpoint: CheckpointConfig;    // 检查点配置
+}
+
+interface HyperParams {
+  epochs: number;
+  batch_size?: number;
+  learning_rate: number;
+  optimizer: OptimizerType;
+  loss_fn: LossFnType;
+  scheduler?: SchedulerType;
+  scheduler_params?: Record<string, any>;
+  use_amp?: boolean;            // 混合精度训练
+  weight_decay?: number;
+}
+
+interface RuntimeBackend {
+  type: "local" | "ssh" | "docker";
+  device: "auto" | "cpu" | "cuda";
+  device_ids?: number[];          // 多 GPU 设备 ID
+}
+
+interface CheckpointConfig {
+  enabled: boolean;
+  save_dir: string;
+  save_best_only?: boolean;
+  save_frequency?: number;      // 保存频率（epoch）
+  max_keep?: number;            // 最多保留的检查点数
+}
+```
+
+**响应**：
+
+```typescript
+interface CreateExperimentResponse {
+  success: true;
+  data: ExperimentSummary;
+  message: "Experiment IR 保存成功";
+}
+
+interface ExperimentSummary {
+  id: string;
+  name: string;
+  model_ir_id: string;
+  data_ir_id: string;
+  status: ExperimentStatus;
+  created_at: string;
+}
+```
+
+**示例**：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/experiments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "exp-001",
+    "name": "CIFAR10 Training",
+    "model_ir_id": "model-001",
+    "data_ir_id": "data-001",
+    "hyper_params": {
+      "epochs": 10,
+      "batch_size": 64,
+      "learning_rate": 0.001,
+      "optimizer": "Adam",
+      "loss_fn": "CrossEntropyLoss",
+      "scheduler": "StepLR",
+      "scheduler_params": {
+        "step_size": 5,
+        "gamma": 0.1
+      },
+      "use_amp": true,
+      "weight_decay": 1e-4
+    },
+    "backend": {
+      "type": "local",
+      "device": "cuda"
+    },
+    "checkpoint": {
+      "enabled": true,
+      "save_dir": "./checkpoints",
+      "save_best_only": true,
+      "save_frequency": 1,
+      "max_keep": 3
+    }
+  }'
+```
+
+### 2. 获取 Experiment 列表
+
+**端点**：`GET /api/v1/experiments`
+
+**描述**：获取所有 Experiment 的摘要列表
+
+**查询参数**：
+- `status` (可选): 过滤状态
+- `model_ir_id` (可选): 过滤模型 ID
+- `data_ir_id` (可选): 过滤数据 ID
+
+**响应**：
+
+```typescript
+interface ListExperimentsResponse {
+  success: true;
+  data: ExperimentSummary[];
+}
+```
+
+**示例**：
+
+```bash
+# 获取所有实验
+curl http://localhost:8000/api/v1/experiments
+
+# 获取运行中的实验
+curl http://localhost:8000/api/v1/experiments?status=running
+
+# 获取特定模型的实验
+curl http://localhost:8000/api/v1/experiments?model_ir_id=model-001
+```
+
+### 3. 获取单个 Experiment
+
+**端点**：`GET /api/v1/experiments/{id}`
+
+**描述**：获取指定 ID 的 Experiment 详细信息
+
+**路径参数**：
+- `id` (string): Experiment 的 ID
+
+**响应**：
+
+```typescript
+interface GetExperimentResponse {
+  success: true;
+  data: ExperimentIR;
+}
+```
+
+**示例**：
+
+```bash
+curl http://localhost:8000/api/v1/experiments/exp-001
+```
+
+### 4. 提交训练任务
+
+**端点**：`POST /api/v1/experiments/{id}/submit`
+
+**描述**：提交训练任务到 Celery
+
+**路径参数**：
+- `id` (string): Experiment 的 ID
+
+**响应**：
+
+```typescript
+interface SubmitTrainingResponse {
+  success: true;
+  data: {
+    experiment_id: string;
+    celery_task_id: string;
+    status: "pending";
+  };
+  message: "训练任务已提交";
+}
+```
+
+**示例**：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/experiments/exp-001/submit
+```
+
+### 5. 获取训练进度
+
+**端点**：`GET /api/v1/experiments/{id}/progress`
+
+**描述**：获取训练任务的当前进度
+
+**路径参数**：
+- `id` (string): Experiment 的 ID
+
+**响应**：
+
+```typescript
+interface TrainingProgressResponse {
+  success: true;
+  data: {
+    experiment_id: string;
+    celery_task_id: string;
+    status: ExperimentStatus;
+    current_epoch?: number;
+    total_epochs?: number;
+    train_loss?: number;
+    train_acc?: number;
+    val_loss?: number;
+    val_acc?: number;
+    lr?: number;
+    elapsed_time?: number;
+    result?: ExperimentResult;
+  };
+}
+```
+
+**示例**：
+
+```bash
+curl http://localhost:8000/api/v1/experiments/exp-001/progress
+```
+
+### 6. 取消训练任务
+
+**端点**：`POST /api/v1/experiments/{id}/cancel`
+
+**描述**：取消正在运行的训练任务
+
+**路径参数**：
+- `id` (string): Experiment 的 ID
+
+**响应**：
+
+```typescript
+interface CancelTrainingResponse {
+  success: true;
+  data: {
+    status: "cancel_requested";
+    task_id: string;
+  };
+  message: "取消请求已发送";
+}
+```
+
+**示例**：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/experiments/exp-001/cancel
+```
+
+---
+
+## Shape Inference API
+
+### 推导形状
+
+**端点**：`POST /api/v1/shape-inference`
+
+**描述**：推导模型中每层的输入输出形状
+
+**请求体**：
+
+```typescript
+interface ShapeInferenceRequest {
+  nodes: IRNode[];
+  edges: IREdge[];
+}
+```
+
+**响应**：
+
+```typescript
+interface ShapeInferenceResponse {
+  success: true;
+  data: {
+    shapes: Record<string, number[]>;
+    valid: boolean;
+    errors?: string[];
+  };
+}
+```
+
+**示例**：
+
+```bash
+curl -X POST http://localhost:8000/api/v1/shape-inference \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nodes": [
+      {"id": "n0", "op_type": "Input", "name": "input", "params": {"shape": [3, 32, 32]}},
+      {"id": "n1", "op_type": "Conv2d", "name": "conv1", "params": {"in_channels": 3, "out_channels": 16, "kernel_size": 3, "padding": 1}},
+      {"id": "n2", "op_type": "ReLU", "name": "relu1", "params": {}}
+    ],
+    "edges": [
+      {"id": "e01", "source": "n0", "target": "n1"},
+      {"id": "e12", "source": "n1", "target": "n2"}
+    ]
+  }'
+```
+
+**响应示例**：
+
+```json
+{
+  "success": true,
+  "data": {
+    "shapes": {
+      "n0": [3, 32, 32],
+      "n1": [16, 32, 32],
+      "n2": [16, 32, 32]
+    },
+    "valid": true
+  }
+}
+```
+
+---
+
+## Stream API
+
+### 订阅训练进度
+
+**端点**：`GET /api/v1/stream/training/{task_id}`
+
+**描述**：通过 SSE (Server-Sent Events) 实时接收训练进度
+
+**路径参数**：
+- `task_id` (string): Celery 任务 ID
+
+**事件类型**：
+
+#### 1. task-update
+```json
+{
+  "event": "task-update",
+  "data": {
+    "experiment_id": "exp-001",
+    "status": "running",
+    "current_epoch": 5,
+    "total_epochs": 10,
+    "train_loss": 0.5234,
+    "train_acc": 0.8123,
+    "val_loss": 0.6789,
+    "val_acc": 0.7856,
+    "lr": 0.0005
+  }
+}
+```
+
+#### 2. task-completed
+```json
+{
+  "event": "task-completed",
+  "data": {
+    "experiment_id": "exp-001",
+    "status": "completed",
+    "result": {
+      "best_val_acc": 0.8234,
+      "best_val_loss": 0.5123,
+      "best_epoch": 8,
+      "total_epochs": 10,
+      "best_ckpt_path": "./checkpoints/exp-001/best.pt"
+    }
+  }
+}
+```
+
+#### 3. task-failed
+```json
+{
+  "event": "task-failed",
+  "data": {
+    "experiment_id": "exp-001",
+    "status": "failed",
+    "error": "CUDA out of memory"
+  }
+}
+```
+
+**示例**：
+
+```bash
+curl -N http://localhost:8000/api/v1/stream/training/abc-123-def
+```
+
+---
+
+## 错误码
+
+### 通用错误码
+
+| 错误码 | 说明 | HTTP 状态码 |
+|--------|------|------------|
+| `INVALID_REQUEST` | 请求参数无效 | 400 |
+| `RESOURCE_NOT_FOUND` | 资源不存在 | 404 |
+| `INTERNAL_ERROR` | 服务器内部错误 | 500 |
+| `VALIDATION_ERROR` | 数据验证失败 | 400 |
+
+### Model IR 错误码
+
+| 错误码 | 说明 |
+|--------|------|
+| `DUPLICATE_NODE_ID` | 节点 ID 重复 |
+| `DUPLICATE_EDGE_ID` | 边 ID 重复 |
+| `INVALID_NODE_ID` | 节点 ID 不存在 |
+| `INVALID_EDGE_SOURCE` | 边的源节点不存在 |
+| `INVALID_EDGE_TARGET` | 边的目标节点不存在 |
+| `CYCLE_DETECTED` | 检测到环 |
+| `MULTIPLE_INPUT_NODES` | 多个输入节点 |
+| `MULTIPLE_OUTPUT_NODES` | 多个输出节点 |
+| `MISSING_INPUT_NODE` | 缺少输入节点 |
+| `MISSING_OUTPUT_NODE` | 缺少输出节点 |
+
+### Data IR 错误码
+
+| 错误码 | 说明 |
+|--------|------|
+| `INVALID_DATA_SOURCE` | 数据源配置无效 |
+| `DATASET_NOT_FOUND` | 数据集不存在 |
+| `INVALID_SPLIT_RATIO` | 切分比例无效 |
+| `INVALID_TRANSFORM` | 变换配置无效 |
+
+### Experiment 错误码
+
+| 错误码 | 说明 |
+|--------|------|
+| `EXPERIMENT_NOT_FOUND` | 实验不存在 |
+| `MODEL_IR_NOT_FOUND` | Model IR 不存在 |
+| `DATA_IR_NOT_FOUND` | Data IR 不存在 |
+| `TASK_ALREADY_RUNNING` | 任务已在运行 |
+| `TASK_NOT_FOUND` | 任务不存在 |
+| `TASK_CANCEL_FAILED` | 任务取消失败 |
+
+### Shape Inference 错误码
+
+| 错误码 | 说明 |
+|--------|------|
+| `SHAPE_INFERENCE_FAILED` | 形状推导失败 |
+| `INVALID_INPUT_SHAPE` | 输入形状无效 |
+| `INCOMPATIBLE_SHAPES` | 形状不兼容 |
+| `UNSUPPORTED_OP_TYPE` | 不支持的算子类型 |
+
+---
+
+## 示例代码
+
+### Python 示例
+
+#### 创建并训练模型
+
+```python
+import requests
+
+BASE_URL = "http://localhost:8000/api/v1"
+
+# 1. 创建 Model IR
+model_ir = {
+    "id": "model-001",
+    "name": "Simple Cnn",
+    "nodes": [
+        {"id": "n0", "op_type": "Input", "name": "input", "params": {"shape": [3, 32, 32]}},
+        {"id": "n1", "op_type": "Conv2d", "name": "conv1", "params": {"in_channels": 3, "out_channels": 16, "kernel_size": 3, "padding": 1}},
+        {"id": "n2", "op_type": "ReLU", "name": "relu1", "params": {}},
+        {"id": "n3", "op_type": "Output", "name": "output", "params": {}}
+    ],
+    "edges": [
+        {"id": "e01", "source": "n0", "target": "n1"},
+        {"id": "e12", "source": "n1", "target": "n2"},
+        {"id": "e23", "source": "n2", "target": "n3"}
+    ]
+}
+
+response = requests.post(f"{BASE_URL}/model-irs", json=model_ir)
+print(f"Model IR 创建: {response.json()}")
+
+# 2. 创建 Data IR
+data_ir = {
+    "id": "data-001",
+    "name": "CIFAR10 Data",
+    "source": {
+        "type": "torchvision",
+        "dataset_name": "CIFAR10",
+        "download_root": "./data"
+    },
+    "schema": {
+        "task_type": "image_classification",
+        "num_classes": 10
+    },
+    "split": {
+        "strategy": "ratio",
+        "train_ratio": 0.8,
+        "val_ratio": 0.1,
+        "test_ratio": 0.1
+    },
+    "train_pipeline": {"transforms": []},
+    "val_pipeline": {"transforms": []},
+    "train_loader_config": {"batch_size": 64},
+    "val_loader_config": {"batch_size": 128}
+}
+
+response = requests.post(f"{BASE_URL}/data-irs", json=data_ir)
+print(f"Data IR 创建: {response.json()}")
+
+# 3. 创建 Experiment
+experiment_ir = {
+    "id": "exp-001",
+    "name": "CIFAR10 Training",
+    "model_ir_id": "model-001",
+    "data_ir_id": "data-001",
+    "hyper_params": {
+        "epochs": 10,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "loss_fn": "CrossEntropyLoss"
+    },
+    "backend": {"type": "local", "device": "cpu"},
+    "checkpoint": {"enabled": False}
+}
+
+response = requests.post(f"{BASE_URL}/experiments", json=experiment_ir)
+print(f"Experiment 创建: {response.json()}")
+
+# 4. 提交训练
+response = requests.post(f"{BASE_URL}/experiments/exp-001/submit")
+print(f"训练提交: {response.json()}")
+
+# 5. 查询进度
+import time
+task_id = response.json()["data"]["celery_task_id"]
+
+while True:
+    response = requests.get(f"{BASE_URL}/experiments/exp-001/progress")
+    progress = response.json()["data"]
+    print(f"进度: {progress}")
+    
+    if progress["status"] in ["completed", "failed"]:
+        break
+    
+    time.sleep(5)
+```
+
+### JavaScript/TypeScript 示例
+
+#### 使用 API Client
+
+```typescript
+import axios from 'axios';
+
+const BASE_URL = 'http://localhost:8000/api/v1';
+
+const api = axios.create({
+  baseURL: BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// 创建 Model IR
+async function createModelIR(modelIR: any) {
+  const response = await api.post('/model-irs', modelIR);
+  return response.data;
+}
+
+// 获取 Model IR 列表
+async function listModelIRs() {
+  const response = await api.get('/model-irs');
+  return response.data;
+}
+
+// 生成代码
+async function generateCode(modelId: string) {
+  const response = await api.get(`/model-irs/${modelId}/codegen`, {
+    responseType: 'text',
+  });
+  return response.data;
+}
+
+// 提交训练
+async function submitTraining(experimentId: string) {
+  const response = await api.post(`/experiments/${experimentId}/submit`);
+  return response.data;
+}
+
+// 订阅训练进度
+function subscribeTrainingProgress(taskId: string, onUpdate: (data: any) => void) {
+  const eventSource = new EventSource(
+    `${BASE_URL}/stream/training/${taskId}`
+  );
+
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    onUpdate(data);
+  };
+
+  return eventSource;
+}
+
+// 使用示例
+(async () => {
+  // 创建模型
+  const modelIR = {
+    id: 'model-001',
+    name: 'Simple Cnn',
+    nodes: [
+      { id: 'n0', op_type: 'Input', name: 'input', params: { shape: [3, 32, 32] } },
+      { id: 'n1', op_type: 'Conv2d', name: 'conv1', params: { in_channels: 3, out_channels: 16, kernel_size: 3, padding: 1 } },
+      { id: 'n2', op_type: 'ReLU', name: 'relu1', params: {} },
+      { id: 'n3', op_type: 'Output', name: 'output', params: {} }
+    ],
+    edges: [
+      { id: 'e01', source: 'n0', target: 'n1' },
+      { id: 'e12', source: 'n1', target: 'n2' },
+      { id: 'e23', source: 'n2', target: 'n3' }
+    ]
+  };
+
+  const result = await createModelIR(modelIR);
+  console.log('Model IR 创建成功:', result);
+
+  // 生成代码
+  const code = await generateCode('model-001');
+  console.log('生成的代码:', code);
+})();
+```
+
+---
+
+## 交互式文档
+
+访问以下地址查看交互式 API 文档：
+
+- **Swagger UI**: http://localhost:8000/api/docs
+- **ReDoc**: http://localhost:8000/api/redoc
+- **OpenAPI JSON**: http://localhost:8000/api/openapi.json
+
+---
+
+**最后更新**：2025-04-09
